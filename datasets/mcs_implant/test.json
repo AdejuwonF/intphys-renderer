@@ -1,0 +1,39 @@
+{
+  "ceilingMaterial": "AI2-THOR/Materials/Walls/WallDrywallGrey",
+  "floorMaterial": "AI2-THOR/Materials/Walls/Drywall",
+  "wallMaterial": "AI2-THOR/Materials/Walls/RedDrywall",
+  "objects": [
+    {
+      "id": "index_0",
+      "type": "sphere",
+      "mass": 1.0,
+      "materialFile": "Plastics/BlueRubber",
+      "pickupable": true,
+      "shows": [
+        {
+          "stepBegin": 0,
+          "position": {
+            "x": 1.5,
+            "y": 0,
+            "z": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "index_1",
+      "type": "cube",
+      "mass": 1.5,
+      "shows": [
+        {
+          "stepBegin": 0,
+          "position": {
+            "x": -1.5,
+            "y": 0,
+            "z": 5
+          }
+        }
+      ]
+    }
+  ]
+}

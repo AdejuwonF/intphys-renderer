@@ -1,0 +1,9 @@
+*.py~
+*.py.swp
+*.log
+**__pycache__
+output/*
+log
+/erase.json
+rease.json
+.idea/*
