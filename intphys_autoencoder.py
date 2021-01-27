@@ -14,46 +14,49 @@ class IntphysAE(nn.Module):
         self.encoder = nn.Sequential(
                  nn.Linear(33, 32),
                 nn.ReLU(inplace=True),
-                nn.Linear(32, 16),
+                nn.Linear(32, 32),
+                nn.ReLU(inplace=True),
+                nn.Linear(32,16),
                 nn.ReLU(inplace=True),
                 nn.Linear(16,16),
-                nn.ReLU(inplace=True),
-                nn.Linear(16,16),
-                nn.ReLU(inplace=True),
-                nn.Linear(16,16),
-                # nn.ReLU(inplace=True)
+                nn.ReLU(inplace=True)
                 )
         self.decoder = nn.Sequential(
                 nn.Linear(16, 16),
                 nn.ReLU(inplace=True),
-                nn.Linear(16, 16),
+                nn.Linear(16, 32),
                 nn.ReLU(inplace=True),
-                nn.Linear(16, 16),
+                nn.Linear(32, 32),
                 nn.ReLU(inplace=True),
-                nn.Linear(16,32),
-                nn.ReLU(inplace=True),
-                nn.Linear(32,33)
+                nn.Linear(32,33),
                 )
 
     def forward(self, x):
         encoding = self.encoder.forward(x)
         return self.decoder.forward(encoding)
 
-def train(cfg, epochs=100):
+def train(cfg, epochs=500):
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cpu")
 
     model = IntphysAE().to(device)
     # model.to(device)
 
-    # train_data = json_dataloader.IntphysJsonTensor(cfg, "_train")
-    val_data = json_dataloader.IntphysJsonTensor(cfg, "_val")
-    # train_loader = torch.utils.data.DataLoader(dataset=train_data, batch_size=32, shuffle=True)
-    train_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=32, shuffle=True)
+    #train_data = json_dataloader.IntphysJsonTensor(cfg, "_train")
+    #val_data = json_dataloader.IntphysJsonTensor(cfg, "_val")
+
+    #Test block using split of validation set b/c full training seet takes too long
+    json_data = json_dataloader.IntphysJsonTensor(cfg, "_val")
+    train_size = round(len(json_data)*.8)
+    val_size = len(json_data) - train_size
+    train_data, val_data = torch.utils.data.random_split(json_data, [train_size, val_size])
+
+    train_loader = torch.utils.data.DataLoader(dataset=train_data, batch_size=32, shuffle=True)
     val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=32, shuffle=True)
 
+    dataset_utils = json_dataloader.DatasetUtils(val_data)
     optimizer = optim.Adam(model.parameters(), lr=.0001)
-    criterion = json_dataloader.AttrLoss()
+    criterion = dataset_utils.loss
     train_loss = []
     val_loss = []
 

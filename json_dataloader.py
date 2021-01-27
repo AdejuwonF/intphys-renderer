@@ -83,9 +83,65 @@ def tensorToAttributes(tensor):
     attributes["object_id"] = torch.argmax(tensor[23:32])
     return attributes
 
+class DatasetUtils(object):
+    def __init__(self, val_data):
+        self.val_data = val_data
+        self.MSE = nn.MSELoss()
+        self.CE = nn.CrossEntropyLoss()
+        self.set_means_stds()
+        return
+    def denormalize(self, tensor):
+        return tensor*self.stds + self.means
+    def normalize(self, tensor):
+        return (tensor-self.means)/self.stds
+    def set_means_stds(self):
+        start = time.time()
+        all_attrs = torch.zeros((33, len(self.val_data)))
+        with torch.no_grad():
+            for i, attrs in enumerate(self.val_data):
+                all_attrs[:,i] = attrs
+
+        self.means = all_attrs.mean(dim=1)
+        self.means[10:] = 0
+        self.stds = all_attrs.std(dim=1)
+        self.stds[10:] = 1
+        print("Set means and std in {0} seconds".format(time.time()-start))
+        return
+    def loss(self, predictions, targets):
+        loss = 0
+        targets = self.normalize(targets)
+        #Continuous Terms
+        cont_pred = predictions[:, :10]
+        cont_target = targets[:, :10]
+
+        loss += self.MSE(cont_pred, cont_target)
+
+        #Categorical Terms
+        exists_pred = predictions[:, 10:12]
+        exists_target = torch.argmax(targets[:, 10:12], dim=1)
+        loss += self.CE(exists_pred, exists_target)
+
+        visible_pred = predictions[:, 12:14]
+        visible_target = torch.argmax(targets[:, 12:14], dim=1)
+        loss += self.CE(visible_pred, visible_target)
+
+        obj_type_pred = predictions[:, 14:20]
+        obj_type_target = torch.argmax(targets[:, 14:20], dim=1)
+        loss += self.CE(obj_type_pred, obj_type_target)
+
+        shape_pred = predictions[:, 20:23]
+        shape_target = torch.argmax(targets[:, 20:23], dim=1)
+        loss += self.CE(shape_pred, shape_target)
+
+        obj_id_pred = predictions[:, 23:]
+        obj_id_target = torch.argmax(targets[:, 23:], dim=1)
+        loss += self.CE(obj_id_pred, obj_id_target)
+
+        return loss
+
 
 class AttrLoss(object):
-    def __init__(self):
+    def __init__(self, val_data=None):
         self.MSE = nn.MSELoss()
         self.CE = nn.CrossEntropyLoss()
 
@@ -94,6 +150,9 @@ class AttrLoss(object):
         #Continuous Terms
         cont_pred = predictions[:, :10]
         cont_target = targets[:, :10]
+
+        cont_pred = cont_pred * torch.tensor([1,1,1,1,1,1,1,1,.01,1])
+        cont_target = cont_target * torch.tensor([1,1,1,1,1,1,1,1,.01,1])
         loss += self.MSE(cont_pred, cont_target)
 
         #Categorical Terms
@@ -125,6 +184,7 @@ def main(args):
     dataset =  IntphysJsonTensor(cfg, "_val")
     # train_dataset = IntphysJsonTensor(cfg, "_train")
     dataloader = torch.utils.data.DataLoader(dataset=dataset, batch_size=32, shuffle=False, num_workers=0)
+    utils = DatasetUtils(dataset)
     return dataloader
 
 if __name__ == "__main__":
