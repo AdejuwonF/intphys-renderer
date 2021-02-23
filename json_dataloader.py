@@ -9,6 +9,7 @@ from torch import nn
 import trainers.trainable_derender
 import configs.dataset_config as data_cfg
 from datasets import utils, intphys
+from collections import defaultdict
 
 
 from utils.misc import setup_cfg, image_based_to_annotation_based, read_image
@@ -36,11 +37,11 @@ class IntphysJsonTensor(Dataset):
         # loses a lot of the functionaluty it had.
         self.attributes = DerenderAttributes(cfg.MODULE_CFG)
 
-        mapper = trainers.trainable_derender.DerenderMapper(cfg.MODULE_CFG.DATASETS.USE_PREDICTED_BOXES,
+        self.mapper = trainers.trainable_derender.DerenderMapper(cfg.MODULE_CFG.DATASETS.USE_PREDICTED_BOXES,
                             self.attributes,
                             False, #for_inference,
                             use_depth=cfg.MODULE_CFG.DATASETS.USE_DEPTH)
-        self.dataset_dicts = list(map(mapper, self.dataset_dicts))
+        #self.dataset_dicts = list(map(self.mapper, self.dataset_dicts))
         print("done after {}".format(time.time()-start))
 
 
@@ -49,6 +50,7 @@ class IntphysJsonTensor(Dataset):
 
 
     def __getitem__(self, idx):
+        # return attributesToTensor(self.mapper(self.dataset_dicts[idx])["attributes"])
         return attributesToTensor(self.dataset_dicts[idx]["attributes"])
 
 
@@ -89,6 +91,7 @@ class DatasetUtils(object):
         self.MSE = nn.MSELoss()
         self.CE = nn.CrossEntropyLoss()
         self.set_means_stds()
+        self.eval_res = None
         return
     def denormalize(self, tensor):
         return tensor*self.stds + self.means
@@ -138,6 +141,25 @@ class DatasetUtils(object):
         loss += self.CE(obj_id_pred, obj_id_target)
 
         return loss
+
+
+    def eval(self, model, dataset):
+        start = time.time()
+        with torch.no_grad():
+            metrics = defaultdict(int)
+            for i, attrs in enumerate(dataset):
+                attr_dict = tensorToAttributes(self.normalize(attrs))
+                pred_dict = tensorToAttributes(model.forward(attrs))
+                for term in attr_dict:
+                    if term in (intphys.CONTINUOUS_TERMS + intphys.QUANTIZED_TERMS):
+                        metrics[term] += abs((attr_dict[term] - pred_dict[term]).item())
+                    else:
+                        metrics[term] += (attr_dict[term] == pred_dict[term]).item()
+            for term in metrics:
+                metrics[term] /= len(dataset)
+        self.eval_res = metrics
+        print("Evaluation completed in {0} seconds".format(time.time()-start))
+        return self.eval_res
 
 
 class AttrLoss(object):

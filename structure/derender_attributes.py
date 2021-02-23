@@ -59,7 +59,7 @@ class DerenderAttributes:
 
     def __init__(self, cfg):
         import_constants_from_dataset(self, cfg.ATTRIBUTES.NAME)
-        """self.set_means_and_stds(cfg)
+        """self.set_means_and_stds(cfg)"""
 
         self.loss_methods = {k: nn.MSELoss(reduction='none') for k in self.continuous_terms}
         self.loss_methods.update({k: nn.CrossEntropyLoss(reduction='none')
@@ -69,7 +69,7 @@ class DerenderAttributes:
         self.err_method = {k: self.absolute_error_acc for k in self.continuous_terms + self.quantized_terms}
         self.err_method.update({k: self.neg_auc_score for k in self.categorical_terms})
 
-        self.value_indices = self.get_value_lengths()"""
+        self.value_indices = self.get_value_lengths()
 
     def backward(self, input):
         x = {}

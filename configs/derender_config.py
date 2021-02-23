@@ -3,7 +3,7 @@ from detectron2.config import CfgNode
 
 def get_derender_config(dataset_name):
     _C = CfgNode()
-    _C.DEBUG = True
+    _C.DEBUG = False
     _C.TYPE = "derender"
     _C.ATTRIBUTES = CfgNode()
 

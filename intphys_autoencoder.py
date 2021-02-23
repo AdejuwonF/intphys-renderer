@@ -35,7 +35,7 @@ class IntphysAE(nn.Module):
         encoding = self.encoder.forward(x)
         return self.decoder.forward(encoding)
 
-def train(cfg, epochs=500):
+def train(cfg, epochs=2):
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cpu")
 
@@ -51,10 +51,12 @@ def train(cfg, epochs=500):
     val_size = len(json_data) - train_size
     train_data, val_data = torch.utils.data.random_split(json_data, [train_size, val_size])
 
-    train_loader = torch.utils.data.DataLoader(dataset=train_data, batch_size=32, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=32, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(dataset=train_data, batch_size=32, shuffle=True, num_workers=8)
+    val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=32, shuffle=True,
+            num_workers=8)
 
-    dataset_utils = json_dataloader.DatasetUtils(val_data)
+    #dataset_utils = json_dataloader.DatasetUtils(val_data)
+    dataset_utils = json_dataloader.DatasetUtils(json_data)
     optimizer = optim.Adam(model.parameters(), lr=.0001)
     criterion = dataset_utils.loss
     train_loss = []
@@ -73,8 +75,8 @@ def train(cfg, epochs=500):
             loss.backward()
             optimizer.step()
 
-            if i % 20 == 0 and i!=0:
-                running_loss/=20
+            if i % 100 == 0 and i!=0:
+                running_loss/=100
                 train_loss.append(running_loss)
                 with torch.no_grad():
                     v_loss = 0
