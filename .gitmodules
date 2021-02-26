@@ -1,0 +1,6 @@
+[submodule "Recurrent-Interaction-Network"]
+	path = Recurrent-Interaction-Network
+	url = https://github.com/rronan/Recurrent-Interaction-Network
+[submodule "pyronan"]
+	path = pyronan
+	url = https://github.com/rronan/pyronan.git
