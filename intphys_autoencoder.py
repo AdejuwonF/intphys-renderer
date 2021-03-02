@@ -64,7 +64,7 @@ def train(cfg, epochs=500):
         running_loss = 0
         start = time.time()
         for i, data in enumerate(train_loader):
-            data = data.to(device)
+            data = dataset_utils.normalize(data.to(device))
             recons  = model.forward(data)
             loss = criterion(recons, data)
             running_loss += loss.item()
@@ -79,7 +79,7 @@ def train(cfg, epochs=500):
                 with torch.no_grad():
                     v_loss = 0
                     for j, data in enumerate(val_loader):
-                        data = data.to(device)
+                        data = dataset_utils.normalize(data.to(device))
                         recons  = model.forward(data)
                         loss = criterion(recons, data)
                         v_loss += loss.item()
