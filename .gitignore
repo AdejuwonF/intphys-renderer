@@ -5,6 +5,7 @@
 output/*
 log
 *.pyc
+checkpoints/
 /erase.json
 rease.json
 .idea/*
