@@ -80,7 +80,7 @@ def tensorToAttributes(tensor):
     attributes["visible"] = torch.argmax(tensor[12:14])
     attributes["type"] = torch.argmax(tensor[14:20])
     attributes["shape"] = torch.argmax(tensor[20:23])
-    attributes["object_id"] = torch.argmax(tensor[23:32])
+    attributes["object_id"] = torch.argmax(tensor[23:33])
     return attributes
 
 class DatasetUtils(object):
