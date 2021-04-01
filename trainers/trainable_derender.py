@@ -121,6 +121,55 @@ class DerenderMapper():
         return {"img_tuple": img_tuple,
                 "camera": camera}
 
+class ImageBasedDerenderMapper():
+    def __init__(self, use_inferred_boxes, attributes ,for_inference, use_depth=True):
+        self.box_key = "pred_box" if use_inferred_boxes else "bbox"
+        self.for_inference = for_inference
+        self.attributes = attributes
+        self.use_depth = use_depth
+
+    def __call__(self, el):
+
+        if self.use_depth:
+            depth = read_image(el["file_name"])
+            norm_depth = 1.0 / (1.0 + depth)
+
+            img_tuple = torch.FloatTensor(norm_depth)
+
+        else:
+            img, img_4, img_2 = map(read_image,
+                                    [el["file_name"]] + list(el["prev_images"]))
+            segmented_image = np.zeros_like(img)
+            segmented_image[:,box[1]:box[3] + 1, box[0]:box[2] + 1] = \
+                img[:,box[1]:box[3] + 1, box[0]:box[2] + 1]
+            img_tuple =  np.concatenate([segmented_image,
+                                         img, img-img_2,
+                                         img-img-4],
+                                        axis=0)/255
+            img_tuple = torch.FloatTensor(img_tuple)
+
+        if hasattr(self.attributes, "camera_terms"):
+            camera = {k: torch.FloatTensor([el["camera"][k]])
+                  for k in self.attributes.camera_terms}
+        else:
+            camera = {}
+
+
+        annotations = []
+        for obj in el['annotations']:
+            if not self.for_inference:
+                attributes = {k:torch.FloatTensor([obj["attributes"][k]])
+                            for k in self.attributes.continuous_terms}
+                attributes.update({k:int(obj["attributes"][k])
+                                for k in self.attributes.categorical_terms +
+                                        self.attributes.quantized_terms})
+                annotations.append({"attributes" : attributes, "camera": camera})
+
+        return {"img_tuple": img_tuple,
+                "camera": camera,
+                "annotations": annotations}
+
+
 def derender_dataset(cfg, dataset_names, attributes,for_inference=False):
     print("reading datasets {}".format(dataset_names))
     start = time.time()

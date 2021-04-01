@@ -30,7 +30,7 @@ class IntphysJsonTensor(Dataset):
         # Redoing derender_dataset from trainable_derenderer without detectron
         required_fields = ["pred_box"] if cfg.MODULE_CFG.DATASETS.USE_PREDICTED_BOXES else ["bbox"]
         required_fields += ["attributes"]
-        _, self.dataset_dicts = image_based_to_annotation_based(self.dataset_dicts,required_fields)
+         _, self.dataset_dicts = image_based_to_annotation_based(self.dataset_dicts,required_fields)
 
         # I've edited DerenderAttrbutes to basically do nothing.  This allows us
         # to call it without registering the dataset with detectron, but it also

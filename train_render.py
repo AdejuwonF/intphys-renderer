@@ -78,16 +78,18 @@ def train(cfg, epochs=500):
 
     #Test block using split of validation set b/c full training set takes too long
     json_data = jrd.IntphysJsonTensor(cfg, "_val")
-    train_size = round(len(json_data)*.8)
+    train_size = round(len(json_data)*1)
     val_size = len(json_data) - train_size
     #For now use a manual seed for reproducibility
     train_data, val_data = torch.utils.data.random_split(json_data, [train_size, val_size], generator = torch.Generator().manual_seed(42))
 
-    train_loader = torch.utils.data.DataLoader(dataset=train_data, batch_size=32, shuffle=True)
+    val_data = train_data
+
+    train_loader = torch.utils.data.DataLoader(dataset=train_data, batch_size=8, shuffle=True)
     val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=32, shuffle=True)
 
     dataset_utils = jrd.DatasetUtils(val_data, device)
-    optimizer = optim.Adam(model.parameters(), lr=.0001)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
     criterion = torch.nn.MSELoss()
     train_loss = []
     val_loss = []
@@ -96,17 +98,17 @@ def train(cfg, epochs=500):
         running_loss = 0
         start = time.time()
         for i, batch in enumerate(train_loader):
-            attributes, depth = batch[0].to(device), batch[1].to(device)
+            attributes, depth, n_objs = batch[0].to(device), batch[1].to(device), batch[2]
             # attributes = dataset_utils.normalize_attr(attributes)
-            out  = model([attr.view(1, -1) for attr in attributes])
-            loss = criterion(out[1], depth[:, 1:, :, :])
+            out  = model([attributes[i][:n_objs[i]] for i in range(attributes.shape[0])])
+            loss = criterion(out[1], depth.view(8, 1, 288, 288))
             running_loss += loss.item()
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            if i % 20 == 0 and i!=0:
+            """if i % 20 == 0 and i!=0:
                 running_loss/=20
                 train_loss.append(running_loss)
                 with torch.no_grad():
@@ -122,7 +124,13 @@ def train(cfg, epochs=500):
 
                 print("\nIteration {0}/{1} of Epoch {2}\nRunning Loss: {3}\nValidatiion Loss: {4}\n{5} seconds".format(i, len(train_loader), epoch, running_loss, v_loss, time.time()-start))
                 running_loss=0
-                start = time.time()
+                start = time.time()"""
+        avg_loss = running_loss/len(train_loader)
+        train_loss.append(avg_loss)
+        print("\nEpoch {0}/{1} \nMean Loss: {2}\n{3} seconds".format(epoch, epochs, \
+                avg_loss, time.time()-start))
+
+
 
     return model
 
@@ -130,7 +138,7 @@ def train(cfg, epochs=500):
 
 def main(args):
     cfg = setup_cfg(args, args.distributed)
-    model = train(cfg, 300)
+    model = train(cfg, 500)
 #    model = CNR(args).to("cuda")
 
 #    val_dataset = jrd.IntphysJsonTensor(cfg, "_val")

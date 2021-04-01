@@ -16,7 +16,7 @@ from run_experiment import parse_args
 from structure.derender_attributes import DerenderAttributes
 
 class IntphysJsonTensor(Dataset):
-    def __init__(self, cfg, split):
+    def __init__(self, cfg, split, max_obj=10):
         self.cfg = cfg
         self.split = split
         data_cfg = cfg.DATA_CFG
@@ -29,14 +29,14 @@ class IntphysJsonTensor(Dataset):
         # Redoing derender_dataset from trainable_derenderer without detectron
         required_fields = ["pred_box"] if cfg.MODULE_CFG.DATASETS.USE_PREDICTED_BOXES else ["bbox"]
         required_fields += ["attributes"]
-        _, self.dataset_dicts = image_based_to_annotation_based(self.dataset_dicts,required_fields)
+        # _, self.dataset_dicts = image_based_to_annotation_based(self.dataset_dicts,required_fields)
 
         # I've edited DerenderAttrbutes to basically do nothing.  This allows us
         # to call it without registering the dataset with detectron, but it also
         # loses a lot of the functionality it had.
         self.attributes = DerenderAttributes(cfg.MODULE_CFG)
 
-        mapper = trainers.trainable_derender.DerenderMapper(cfg.MODULE_CFG.DATASETS.USE_PREDICTED_BOXES,
+        mapper = trainers.trainable_derender.ImageBasedDerenderMapper(cfg.MODULE_CFG.DATASETS.USE_PREDICTED_BOXES,
                             self.attributes,
                             False, #for_inference,
                             use_depth=cfg.MODULE_CFG.DATASETS.USE_DEPTH)
@@ -49,7 +49,14 @@ class IntphysJsonTensor(Dataset):
 
 
     def __getitem__(self, idx):
-        return attributesToTensor(self.dataset_dicts[idx]),self.dataset_dicts[idx]["img_tuple"]
+        annotations = torch.zeros(10, 39)
+        n_obj = len(self.dataset_dicts[idx]["annotations"])
+        for i in range(n_obj):
+            annotations[i, :] = attributesToTensor(self.dataset_dicts[idx]["annotations"][i])
+
+        depth = self.dataset_dicts[idx]["img_tuple"]
+        return annotations, depth, n_obj
+        # return attributesToTensor(self.dataset_dicts[idx]),self.dataset_dicts[idx]["img_tuple"]
 
 def attributesToTensor(attr_dict):
     # Continuos terms (treat quantized as continuous for now)
@@ -96,25 +103,40 @@ def tensorToAttributes(tensor):
 class DatasetUtils(object):
     def __init__(self, val_data, device="cpu"):
         self.val_data = val_data
+        self.device = device
         self.set_means_stds_attr()
-        self.attr_stds = self.attr_stds.to(device)
-        self.attr_means = self.attr_means.to(device)
         return
     def denormalize_attr(self, tensor):
         return tensor*self.attr_stds + self.attr_means
     def normalize_attr(self, tensor):
         return (tensor-self.attr_means)/self.attr_stds
+    def denormalize_depth(self, tensor):
+        # return tensor*self.depth_stds + self.depth_means
+        # return tensor / self.depth_abs_max
+        return (1/tensor) - 1
+    def normalize_depth(self, tensor):
+        # return (tensor-self.depth_means)/self.depth_stds
+        # return tensor * self.depth_abs_max
+        return 1/(1 + tensor)
+
     def set_means_stds_attr(self):
         start = time.time()
-        all_attrs = torch.zeros((39, len(self.val_data)))
+        all_attrs = []
+        all_depths = torch.zeros(288, 288, len(self.val_data))
         with torch.no_grad():
-            for i, attrs in enumerate(self.val_data):
-                all_attrs[:,i] = attrs[0]
+            for i, data in enumerate(self.val_data):
+                all_depths[:, :, i] = data[1]
+                for attr in data[0]:
+                    all_attrs.append(attr)
+        all_attrs = torch.stack(all_attrs, dim=1)
 
-        self.attr_means = all_attrs.mean(dim=1)
+        self.attr_means = all_attrs.mean(dim=1).to(self.device)
         self.attr_means[10:33] = 0
-        self.attr_stds = all_attrs.std(dim=1)
+        self.attr_stds = all_attrs.std(dim=1).to(self.device)
         self.attr_stds[10:33] = 1
+        self.depth_means = all_depths.mean(dim=2).to(self.device)
+        self.depth_stds = all_depths.std(dim=2).to(self.device)
+        self.depth_abs_max = abs(all_depths).max().to(self.device)
         print("Set means and std in {0} seconds".format(time.time()-start))
         return
 
@@ -124,6 +146,7 @@ def main(args):
     cfg = setup_cfg(args, args.distributed)
     #print(cfg)
     dataset =  IntphysJsonTensor(cfg, "_val")
+    util = DatasetUtils(dataset)
     # train_dataset = IntphysJsonTensor(cfg, "_train")
     dataloader = torch.utils.data.DataLoader(dataset=dataset, batch_size=32, shuffle=False, num_workers=0)
     # utils = DatasetUtils(dataset)
