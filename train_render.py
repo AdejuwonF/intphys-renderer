@@ -67,7 +67,7 @@ def parse_args():
 
     return parser.parse_args()
 
-def train(cfg, epochs=500):
+def train(cfg, args, epochs=500):
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cuda")
 
@@ -89,7 +89,7 @@ def train(cfg, epochs=500):
     val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=32, shuffle=True)
 
     dataset_utils = jrd.DatasetUtils(val_data, device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=1e-2)
     criterion = torch.nn.MSELoss()
     train_loss = []
     val_loss = []
@@ -101,7 +101,7 @@ def train(cfg, epochs=500):
             attributes, depth, n_objs = batch[0].to(device), batch[1].to(device), batch[2]
             # attributes = dataset_utils.normalize_attr(attributes)
             out  = model([attributes[i][:n_objs[i]] for i in range(attributes.shape[0])])
-            loss = criterion(out[1], depth.view(8, 1, 288, 288))
+            loss = criterion(out[1], depth.view(-1, 1, 288, 288))
             running_loss += loss.item()
 
             optimizer.zero_grad()
@@ -129,6 +129,14 @@ def train(cfg, epochs=500):
         train_loss.append(avg_loss)
         print("\nEpoch {0}/{1} \nMean Loss: {2}\n{3} seconds".format(epoch, epochs, \
                 avg_loss, time.time()-start))
+        if (epoch % (epochs//10)) == 0 or epoch == epochs:
+            d = {"model_state_dict": model.state_dict(),
+                 "optimizer_state_dict": optimizer.state_dict(),
+                 "training_loss" : train_loss,
+                 "validation_loss": val_loss,
+                 "epochs" : epoch}
+            torch.save(d, "./checkpoints/renderer_1/checkpoint_epoch_{0}".format(epoch))
+
 
 
 
@@ -138,7 +146,7 @@ def train(cfg, epochs=500):
 
 def main(args):
     cfg = setup_cfg(args, args.distributed)
-    model = train(cfg, 500)
+    model = train(cfg, args, 3000)
 #    model = CNR(args).to("cuda")
 
 #    val_dataset = jrd.IntphysJsonTensor(cfg, "_val")
