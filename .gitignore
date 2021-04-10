@@ -9,3 +9,6 @@ checkpoints/
 /erase.json
 rease.json
 .idea/*
+*.jpg
+*.png
+log.txt
