@@ -36,11 +36,26 @@ class IntphysJsonTensor(Dataset):
         # loses a lot of the functionality it had.
         self.attributes = DerenderAttributes(cfg.MODULE_CFG)
 
-        mapper = trainers.trainable_derender.ImageBasedDerenderMapper(cfg.MODULE_CFG.DATASETS.USE_PREDICTED_BOXES,
+        self.mapper = trainers.trainable_derender.ImageBasedDerenderMapper(cfg.MODULE_CFG.DATASETS.USE_PREDICTED_BOXES,
                             self.attributes,
                             False, #for_inference,
                             use_depth=cfg.MODULE_CFG.DATASETS.USE_DEPTH)
-        self.dataset_dicts = list(map(mapper, self.dataset_dicts))
+
+        non_visibles = []
+        for i in range(len(self.dataset_dicts)):
+            visibles = 0
+            d = self.dataset_dicts[i]
+            for annotation in d["annotations"]:
+
+                visibles += (annotation["attributes"]["visible"] * (annotation["attributes"]["type"] == 0))
+            if (visibles == 0):
+                non_visibles.append(i)
+        # non_visibles.reverse()
+        for idx in range(len(non_visibles)-1, -1, -1):
+            self.dataset_dicts.pop(non_visibles[idx])
+
+        # self.dataset_dicts = list(map(self.mapper, self.dataset_dicts))
+        # self.dataset_dicts = [self.mapper(x) for x in self.dataset_dicts]
         print("done after {}".format(time.time()-start))
 
 
@@ -50,11 +65,11 @@ class IntphysJsonTensor(Dataset):
 
     def __getitem__(self, idx):
         annotations = torch.zeros(10, 39)
-        n_obj = len(self.dataset_dicts[idx]["annotations"])
+        data_dict = self.mapper(self.dataset_dicts[idx])
+        n_obj = len(data_dict["annotations"])
         for i in range(n_obj):
-            annotations[i, :] = attributesToTensor(self.dataset_dicts[idx]["annotations"][i])
-
-        depth = self.dataset_dicts[idx]["img_tuple"]
+            annotations[i, :] = attributesToTensor(data_dict["annotations"][i])
+        depth = data_dict["img_tuple"]
         return annotations, depth, n_obj
         # return attributesToTensor(self.dataset_dicts[idx]),self.dataset_dicts[idx]["img_tuple"]
 
@@ -146,6 +161,7 @@ def main(args):
     cfg = setup_cfg(args, args.distributed)
     #print(cfg)
     dataset =  IntphysJsonTensor(cfg, "_val")
+    # omega_dataset = IntphysJsonTensor(cfg, "_train")
     util = DatasetUtils(dataset)
     # train_dataset = IntphysJsonTensor(cfg, "_train")
     dataloader = torch.utils.data.DataLoader(dataset=dataset, batch_size=32, shuffle=False, num_workers=0)
