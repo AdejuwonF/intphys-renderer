@@ -12,6 +12,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch import nn
 import torch.optim as optim
 import time
+import wandb
 # from detectron2.engine import launch, default_setup
 
 from datasets.build_dataset import build_dataset
@@ -74,8 +75,11 @@ def parse_args():
 def train(cfg, args):
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cuda")
+    wandb.init(project='Intphys-Renderer', entity='adejuwonf')
+    wandb.config.update(args)
 
     model = CNR(args).to(device)
+    wandb.watch(model, log="all", log_freq=1)
 
     #train_data = jrd.IntphysJsonTensor(cfg, "_train")
     #val_data = jrd.IntphysJsonTensor(cfg, "_val")
@@ -117,15 +121,32 @@ def train(cfg, args):
             running_loss/=args.log_interval
             with torch.no_grad():
                 v_loss = 0
-                for j, batch in enumerate(val_loader):
+                for j in range(len(val_loader)):
+                    batch = next(iter(val_loader))
                     attributes, depth, n_objs = batch[0].to(device), batch[1].to(device), batch[2]
                     # attributes = dataset_utils.normalize_attr(attributes)
                     out  = model([attributes[i][:n_objs[i]] for i in range(attributes.shape[0])])
                     loss = criterion(out[1], depth.view(-1, 1, 288, 288))
 
                     v_loss += loss.item()
+
+
                 v_loss /= len(val_loader)
 
+                rand_index = torch.randint(depth.shape[0], (1,1)).item()
+                print(depth.shape[0])
+                gt_depth = depth[rand_index].view(288,288).to("cpu")*10
+                out_depth = out[1][rand_index].view(288, 288).to("cpu")*10
+
+                wandb.log({"iteration" : i,
+                    "training loss" : running_loss,
+                    "validation_loss" : v_loss,
+                    "examples" : [wandb.Image(gt_depth, caption="Ground Truth"),
+                                  wandb.Image(out_depth, caption="Predicted Depth")]})
+                del attributes
+                del depth
+                del n_objs
+                del loss
                 val_loss.append(v_loss)
                 train_loss.append(running_loss)
 

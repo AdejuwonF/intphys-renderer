@@ -12,3 +12,4 @@ rease.json
 *.jpg
 *.png
 log.txt
+wandb/
