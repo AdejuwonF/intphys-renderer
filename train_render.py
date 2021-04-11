@@ -64,10 +64,14 @@ def parse_args():
     parser.add_argument("--depth", action="store_false")
     parser.add_argument("--mse", action="store_true")
     parser.add_argument("--upsample_mode", default="bilinear")
+    parser.add_argument("--iterations", type=int, default = 200000)
+    parser.add_argument("--log_interval", type=int, default=250)
+    parser.add_argument("--lr" , type=float, default=1e-2)
+    parser.add_argument("--batch_size",type=int, default=8)
 
     return parser.parse_args()
 
-def train(cfg, args, epochs=500):
+def train(cfg, args):
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cuda")
 
@@ -85,57 +89,57 @@ def train(cfg, args, epochs=500):
 
     val_data = train_data
 
-    train_loader = torch.utils.data.DataLoader(dataset=train_data, batch_size=8, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=32, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(dataset=train_data, batch_size=args.batch_size, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=args.batch_size, shuffle=True)
 
     dataset_utils = jrd.DatasetUtils(val_data, device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-2)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
     criterion = torch.nn.MSELoss()
     train_loss = []
     val_loss = []
+    start_iter = 1
+    running_loss = 0
+    start = time.time()
+    for i in range(start_iter, start_iter + args.iterations):
 
-    for epoch in range(1, epochs+1):
-        running_loss = 0
-        start = time.time()
-        for i, batch in enumerate(train_loader):
-            attributes, depth, n_objs = batch[0].to(device), batch[1].to(device), batch[2]
-            # attributes = dataset_utils.normalize_attr(attributes)
-            out  = model([attributes[i][:n_objs[i]] for i in range(attributes.shape[0])])
-            loss = criterion(out[1], depth.view(-1, 1, 288, 288))
-            running_loss += loss.item()
+        batch = next(iter(train_loader))
+        attributes, depth, n_objs = batch[0].to(device), batch[1].to(device), batch[2]
+        # attributes = dataset_utils.normalize_attr(attributes)
+        out  = model([attributes[i][:n_objs[i]] for i in range(attributes.shape[0])])
+        loss = criterion(out[1], depth.view(-1, 1, 288, 288))
+        running_loss += loss.item()
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-            """if i % 20 == 0 and i!=0:
-                running_loss/=20
+        if i % args.log_interval == 0 and i!=0:
+            running_loss/=args.log_interval
+            with torch.no_grad():
+                v_loss = 0
+                for j, batch in enumerate(val_loader):
+                    attributes, depth, n_objs = batch[0].to(device), batch[1].to(device), batch[2]
+                    # attributes = dataset_utils.normalize_attr(attributes)
+                    out  = model([attributes[i][:n_objs[i]] for i in range(attributes.shape[0])])
+                    loss = criterion(out[1], depth.view(-1, 1, 288, 288))
+
+                    v_loss += loss.item()
+                v_loss /= len(val_loader)
+
+                val_loss.append(v_loss)
                 train_loss.append(running_loss)
-                with torch.no_grad():
-                    v_loss = 0
-                    for j, batch in enumerate(val_loader):
-                        attributes, depth = batch[0].to(device), batch[1].to(device)
-                        # attributes = dataset_utils.normalize_attr(attributes)
-                        out  = model([attr.view(1, -1) for attr in attributes])
-                        loss = criterion(out[1], depth[:, 1:, :, :])
-                        v_loss += loss.item()
-                    v_loss /= len(val_loader)
-                    val_loss.append(v_loss)
 
-                print("\nIteration {0}/{1} of Epoch {2}\nRunning Loss: {3}\nValidatiion Loss: {4}\n{5} seconds".format(i, len(train_loader), epoch, running_loss, v_loss, time.time()-start))
-                running_loss=0
-                start = time.time()"""
-        avg_loss = running_loss/len(train_loader)
-        train_loss.append(avg_loss)
-        print("\nEpoch {0}/{1} \nMean Loss: {2}\n{3} seconds".format(epoch, epochs, \
-                avg_loss, time.time()-start))
-        if (epoch % (epochs//10)) == 0 or epoch == epochs:
+            print("\nIteration {0}/{1}\nRunning Loss: {2}\nValidatiion Loss: {3}\n{4} seconds".format(i, args.iterations, running_loss, v_loss, time.time()-start))
+            running_loss=0
+            start = time.time()
+
+        """if (i % (iterations//10)) == 0 or i == iterations:
             d = {"model_state_dict": model.state_dict(),
-                 "optimizer_state_dict": optimizer.state_dict(),
+                 "optimizer_stat_dict": optimizer.state_dict(),
                  "training_loss" : train_loss,
                  "validation_loss": val_loss,
                  "epochs" : epoch}
-            torch.save(d, "./checkpoints/renderer_1/checkpoint_epoch_{0}".format(epoch))
+            torch.save(d, "./checkpoints/renderer_1/checkpoint_epoch_{0}".format(epoch))"""
 
 
 
@@ -146,7 +150,7 @@ def train(cfg, args, epochs=500):
 
 def main(args):
     cfg = setup_cfg(args, args.distributed)
-    model = train(cfg, args, 3000)
+    model = train(cfg, args)
 #    model = CNR(args).to("cuda")
 
 #    val_dataset = jrd.IntphysJsonTensor(cfg, "_val")
