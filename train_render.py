@@ -60,16 +60,21 @@ def parse_args():
     parser.add_argument("--nc_in", type=int, default=39)
     parser.add_argument("--nc_out", type=int, default=0)
     parser.add_argument("--nf", type=int, default=32)
-    parser.add_argument("--n_blocks", type=int, default=3)
+    parser.add_argument("--n_blocks", type=int, default=4)
     parser.add_argument("--n_layers", type=int, default=3)
     parser.add_argument("--depth", action="store_false")
     parser.add_argument("--mse", action="store_true")
     parser.add_argument("--upsample_mode", default="bilinear")
-    parser.add_argument("--iterations", type=int, default = 200000)
+    parser.add_argument("--iterations", type=int, default = 400000)
     parser.add_argument("--log_interval", type=int, default=250)
     parser.add_argument("--checkpoint_interval", type=int, default=4000)
-    parser.add_argument("--lr" , type=float, default=1e-2)
+    parser.add_argument("--lr" , type=float, default=1e-3)
     parser.add_argument("--batch_size",type=int, default=8)
+
+    parser.add_argument("--run_path", type=str, default=None)
+    parser.add_argument("--resume", type=bool, default=False)
+    parser.add_argument("--ck", type=str, default=None)
+
 
     return parser.parse_args()
 
@@ -79,38 +84,48 @@ def train(cfg, args):
     wandb.init(project='Intphys-Renderer', entity='adejuwonf')
     wandb.config.update(args)
 
-    model = CNR(args).to(device)
+    start_iter = 1
+    running_loss = 0
+    model = nn.DataParallel(CNR(args).to(device))
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    criterion = torch.nn.MSELoss()
+
+    """ck = wandb.restore("checkpoint_iteration_96000.tar", run_path="adejuwonf/Intphys-Renderer/16wiitze")
+    d = torch.load(ck.name)
+    model.load_state_dict(d["model_state_dict"])
+    start_iter = d["iteration"] + 1
+    optimizer.load_state_dict(d["optimizer_state_dict"])
+    optimizer.lr = args.lr"""
+
+
     wandb.watch(model, log="all", log_freq=10)
 
     train_data = jrd.IntphysJsonTensor(cfg, "_train")
     val_data = jrd.IntphysJsonTensor(cfg, "_val")
 
     #Test block using split of validation set b/c full training set takes too long
-    # json_data = jrd.IntphysJsonTensor(cfg, "_val")
-    # train_size = round(len(json_data)*1)
-    # val_size = len(json_data) - train_size
+    #json_data = jrd.IntphysJsonTensor(cfg, "_val")
+    #train_size = round(len(json_data)*1)
+    #val_size = len(json_data) - train_size
     # For now use a manual seed for reproducibility
-    # train_data, val_data = torch.utils.data.random_split(json_data, [train_size, val_size], generator = torch.Generator().manual_seed(42))
+    #train_data, val_data = torch.utils.data.random_split(json_data, [train_size, val_size], generator = torch.Generator().manual_seed(42))
 
-    # val_data = train_data
+    #val_data = train_data
 
     train_loader = torch.utils.data.DataLoader(dataset=train_data, batch_size=args.batch_size, shuffle=True)
     val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=args.batch_size, shuffle=True)
 
     dataset_utils = jrd.DatasetUtils(val_data, device)
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    criterion = torch.nn.MSELoss()
     # train_loss = []
     # val_loss = []
-    start_iter = 1
-    running_loss = 0
     start = time.time()
     for i in range(start_iter, start_iter + args.iterations):
 
         batch = next(iter(train_loader))
         attributes, depth, n_objs = batch[0].to(device), batch[1].to(device), batch[2]
         # attributes = dataset_utils.normalize_attr(attributes)
-        out  = model([attributes[i][:n_objs[i]] for i in range(attributes.shape[0])])
+        idx_tensor = torch.tensor([0, attributes.shape[0]//2, attributes.shape[0]//2, attributes.shape[0]])
+        out  = model([attributes[i][:n_objs[i]] for i in range(attributes.shape[0])], idx_tensor)
         loss = criterion(out[1], depth.view(-1, 1, 288, 288))
         running_loss += loss.item()
 
@@ -126,8 +141,10 @@ def train(cfg, args):
                 for j in range(len(val_loader)):
                     batch = next(iter(val_loader))
                     attributes, depth, n_objs = batch[0].to(device), batch[1].to(device), batch[2]
+                    idx_tensor = torch.tensor([0, attributes.shape[0]//2, attributes.shape[0]//2, attributes.shape[0]])
+
                     # attributes = dataset_utils.normalize_attr(attributes)
-                    out  = model([attributes[i][:n_objs[i]] for i in range(attributes.shape[0])])
+                    out  = model([attributes[i][:n_objs[i]] for i in range(attributes.shape[0])], idx_tensor)
                     loss = criterion(out[1], depth.view(-1, 1, 288, 288))
 
                     v_loss += loss.item()
@@ -145,7 +162,7 @@ def train(cfg, args):
                     "examples" : [wandb.Image(gt_depth, caption="Ground Truth"),
                                   wandb.Image(out_depth, caption="Predicted Depth")]})
 
-                print("\nIteration {0}/{1}\nRunning Loss: {2}\nValidatiion Loss: {3}\n{4} seconds".format(i, args.iterations, running_loss, v_loss, time.time()-start))
+                print("\nIteration {0}/{1}\nRunning Loss: {2}\nValidation Loss: {3}\n{4} seconds".format(i, start_iter + args.iterations, running_loss, v_loss, time.time()-start))
 
                 del attributes
                 del depth
