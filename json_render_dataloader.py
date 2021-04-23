@@ -10,7 +10,8 @@ import trainers.trainable_derender
 import configs.dataset_config as data_cfg
 from datasets import utils, intphys
 
-
+import seaborn as sns
+import matplotlib.pyplot as plt
 from utils.misc import setup_cfg, image_based_to_annotation_based, read_image
 from run_experiment import parse_args
 from structure.derender_attributes import DerenderAttributes
@@ -44,11 +45,12 @@ class IntphysJsonTensor(Dataset):
         non_visibles = []
         for i in range(len(self.dataset_dicts)):
             visibles = 0
+            has_wall = False
             d = self.dataset_dicts[i]
             for annotation in d["annotations"]:
-
-                visibles += (annotation["attributes"]["visible"] * (annotation["attributes"]["type"] == 0))
-            if (visibles == 0):
+                visibles += (annotation["attributes"]["visible"] * (annotation["attributes"]["type"] == 0 or annotation["attributes"]["type"] == 1))
+                has_wall = has_wall or (annotation["attributes"]["visible"] and annotation["attributes"]["type"] == 3)
+            if (visibles == 0):# or has_wall):
                 non_visibles.append(i)
         # non_visibles.reverse()
         for idx in range(len(non_visibles)-1, -1, -1):
@@ -161,7 +163,15 @@ def main(args):
     cfg = setup_cfg(args, args.distributed)
     #print(cfg)
     dataset =  IntphysJsonTensor(cfg, "_val")
-    # omega_dataset = IntphysJsonTensor(cfg, "_train")
+    omega_dataset = IntphysJsonTensor(cfg, "_train")
+
+    data = torch.zeros(288*288*10000)
+    samples = torch.multinomial(torch.arange(len(omega_dataset), dtype=float), 10000)
+    for i in range(10000):
+        ann, depth, n_obj = omega_dataset[samples[i]]
+        data[i*288*288:(i+1)*288*288] = depth.flatten()
+    sns.displot(data=data.numpy(), kind="kde")
+
     util = DatasetUtils(dataset)
     # train_dataset = IntphysJsonTensor(cfg, "_train")
     dataloader = torch.utils.data.DataLoader(dataset=dataset, batch_size=32, shuffle=False, num_workers=0)
