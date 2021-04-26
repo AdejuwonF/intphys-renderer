@@ -150,7 +150,7 @@ class DatasetUtils(object):
         self.attr_means = all_attrs.mean(dim=1).to(self.device)
         self.attr_means[10:33] = 0
         self.attr_stds = all_attrs.std(dim=1).to(self.device)
-        self.attr_stds[10:33] = 1
+        self.attr_stds[10:35] = 1
         self.depth_means = all_depths.mean(dim=2).to(self.device)
         self.depth_stds = all_depths.std(dim=2).to(self.device)
         self.depth_abs_max = abs(all_depths).max().to(self.device)
@@ -163,14 +163,14 @@ def main(args):
     cfg = setup_cfg(args, args.distributed)
     #print(cfg)
     dataset =  IntphysJsonTensor(cfg, "_val")
-    omega_dataset = IntphysJsonTensor(cfg, "_train")
+    # omega_dataset = IntphysJsonTensor(cfg, "_train")
 
-    data = torch.zeros(288*288*10000)
+    """data = torch.zeros(288*288*10000)
     samples = torch.multinomial(torch.arange(len(omega_dataset), dtype=float), 10000)
     for i in range(10000):
         ann, depth, n_obj = omega_dataset[samples[i]]
         data[i*288*288:(i+1)*288*288] = depth.flatten()
-    sns.displot(data=data.numpy(), kind="kde")
+    sns.displot(data=data.numpy(), kind="kde")"""
 
     util = DatasetUtils(dataset)
     # train_dataset = IntphysJsonTensor(cfg, "_train")
