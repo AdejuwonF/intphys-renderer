@@ -69,8 +69,13 @@ class IntphysJsonTensor(Dataset):
         annotations = torch.zeros(10, 39)
         data_dict = self.mapper(self.dataset_dicts[idx])
         n_obj = len(data_dict["annotations"])
-        for i in range(n_obj):
-            annotations[i, :] = attributesToTensor(data_dict["annotations"][i])
+        i = 0
+        for obj in data_dict["annotations"]:
+            if not obj["attributes"]["visible"]:
+                n_obj -= 1
+            else:
+                annotations[i, :] = attributesToTensor(obj)
+                i += 1
         depth = data_dict["img_tuple"]
         return annotations, depth, n_obj
         # return attributesToTensor(self.dataset_dicts[idx]),self.dataset_dicts[idx]["img_tuple"]
@@ -93,7 +98,7 @@ def attributesToTensor(attr_dict):
       shape[attr_dict["attributes"]["shape"]] = 1
       obj_id[attr_dict["attributes"]["object_id"]] = 1
       # continuous terms
-      # positions 0-9
+      # positions 0-9 33-38
       # categorical terms, 10-11, 12-13, 14-19, 20-22, 23-32
       return torch.cat([cont_terms, quant_terms, exists, visible, obj_type, shape, obj_id,
           camera_terms])
