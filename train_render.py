@@ -57,15 +57,16 @@ def parse_args():
     parser.add_argument("--height", type=int, default=288)
     parser.add_argument("--width", type=int, default=288)
     parser.add_argument("--n_obj", type=int, default=100)
-    parser.add_argument("--nc_in", type=int, default=39)
+    parser.add_argument("--attr_len", type=int, default=39)
+    parser.add_argument("--nc_in", type=int, default=32)
     parser.add_argument("--nc_out", type=int, default=0)
     parser.add_argument("--nf", type=int, default=32)
-    parser.add_argument("--n_blocks", type=int, default=4)
+    parser.add_argument("--n_blocks", type=int, default=5)
     parser.add_argument("--n_layers", type=int, default=3)
     parser.add_argument("--depth", action="store_false")
     parser.add_argument("--mse", action="store_true")
     parser.add_argument("--upsample_mode", default="bilinear")
-    parser.add_argument("--iterations", type=int, default = 400000)
+    parser.add_argument("--iterations", type=int, default = 4000000)
     parser.add_argument("--log_interval", type=int, default=250)
     parser.add_argument("--checkpoint_interval", type=int, default=4000)
     parser.add_argument("--lr" , type=float, default=1e-3)
@@ -79,7 +80,7 @@ def parse_args():
     return parser.parse_args()
 
 def train(cfg, args):
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cuda")
     wandb.init(project='Intphys-Renderer', entity='adejuwonf')
     wandb.config.update(args)
@@ -104,26 +105,35 @@ def train(cfg, args):
     val_data = jrd.IntphysJsonTensor(cfg, "_val")
 
     #Test block using split of validation set b/c full training set takes too long
-    #json_data = jrd.IntphysJsonTensor(cfg, "_val")
-    #train_size = round(len(json_data)*1)
-    #val_size = len(json_data) - train_size
+    # json_data = jrd.IntphysJsonTensor(cfg, "_val")
+    # train_size = 10 # round(len(json_data)*1)
+    # val_size = len(json_data) - train_size
     # For now use a manual seed for reproducibility
-    #train_data, val_data = torch.utils.data.random_split(json_data, [train_size, val_size], generator = torch.Generator().manual_seed(42))
+    # train_data, val_data = torch.utils.data.random_split(json_data, [train_size, val_size], generator = torch.Generator().manual_seed(42))
 
-    #val_data = train_data
+    # val_data = train_data
 
     train_loader = torch.utils.data.DataLoader(dataset=train_data, batch_size=args.batch_size, shuffle=True)
     val_loader = torch.utils.data.DataLoader(dataset=val_data, batch_size=args.batch_size, shuffle=True)
 
-    dataset_utils = jrd.DatasetUtils(val_data, device)
-    # train_loss = []
-    # val_loss = []
-    start = time.time()
-    for i in range(start_iter, start_iter + args.iterations):
+    # val_loader = train_loader
 
-        batch = next(iter(train_loader))
+    dataset_utils = jrd.DatasetUtils(val_data, device)
+    start = time.time()
+    train_iter = iter(train_loader)
+    for i in range(start_iter, start_iter + args.iterations):
+        batch = next(train_iter, None)
+        if (batch is None):
+            train_iter = iter(train_loader)
+            batch = next(train_iter, None)
+
         attributes, depth, n_objs = batch[0].to(device), batch[1].to(device), batch[2]
-        # attributes = dataset_utils.normalize_attr(attributes)
+
+        # attributes = attributes[[0, 4, 5, 6, 8, 9], :]
+        # depth = depth[[0, 4, 5, 6, 8, 9], :, :]
+        # n_objs = n_objs[[0, 4, 5, 6, 8, 9]]
+
+        attributes = dataset_utils.normalize_attr(attributes)
         idx_tensor = torch.tensor([0, attributes.shape[0]//2, attributes.shape[0]//2, attributes.shape[0]])
         out  = model([attributes[i][:n_objs[i]] for i in range(attributes.shape[0])], idx_tensor)
         loss = criterion(out[1], depth.view(-1, 1, 288, 288))
@@ -138,19 +148,25 @@ def train(cfg, args):
             running_loss/=args.log_interval
             with torch.no_grad():
                 v_loss = 0
-                for j in range(len(val_loader)):
-                    batch = next(iter(val_loader))
+                val_iter = iter(val_loader)
+                for j in range(len(val_iter)):
+                    batch = next(val_iter)
                     attributes, depth, n_objs = batch[0].to(device), batch[1].to(device), batch[2]
+
+                    # attributes = attributes[[0, 4, 5, 6, 8, 9], :]
+                    # depth = depth[[0, 4, 5, 6, 8, 9], :, :]
+                    # n_objs = n_objs[[0, 4, 5, 6, 8, 9]]
+
                     idx_tensor = torch.tensor([0, attributes.shape[0]//2, attributes.shape[0]//2, attributes.shape[0]])
 
-                    # attributes = dataset_utils.normalize_attr(attributes)
+                    attributes = dataset_utils.normalize_attr(attributes)
                     out  = model([attributes[i][:n_objs[i]] for i in range(attributes.shape[0])], idx_tensor)
                     loss = criterion(out[1], depth.view(-1, 1, 288, 288))
 
                     v_loss += loss.item()
 
 
-                v_loss /= len(val_loader)
+                v_loss /= len(val_iter)
 
                 rand_index = torch.randint(depth.shape[0], (1,1)).item()
                 gt_depth = depth[rand_index].view(288,288).to("cpu")*10
@@ -170,8 +186,6 @@ def train(cfg, args):
                 del loss
                 del v_loss
                 torch.cuda.empty_cache()
-                # val_loss.append(v_loss)
-                # train_loss.append(running_loss)
 
                 running_loss=0
                 start = time.time()
