@@ -61,7 +61,7 @@ def parse_args():
     parser.add_argument("--nc_in", type=int, default=32)
     parser.add_argument("--nc_out", type=int, default=0)
     parser.add_argument("--nf", type=int, default=32)
-    parser.add_argument("--n_blocks", type=int, default=5)
+    parser.add_argument("--n_blocks", type=int, default=4)
     parser.add_argument("--n_layers", type=int, default=3)
     parser.add_argument("--depth", action="store_false")
     parser.add_argument("--mse", action="store_true")
@@ -82,8 +82,8 @@ def parse_args():
 def train(cfg, args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cuda")
-    wandb.init(project='Intphys-Renderer', entity='adejuwonf')
-    wandb.config.update(args)
+    # wandb.init(project='Intphys-Renderer', entity='adejuwonf')
+    # wandb.config.update(args)
 
     start_iter = 1
     running_loss = 0
@@ -99,14 +99,14 @@ def train(cfg, args):
     optimizer.lr = args.lr"""
 
 
-    wandb.watch(model, log="all", log_freq=10)
+    # wandb.watch(model, log="all", log_freq=10)
 
     train_data = jrd.IntphysJsonTensor(cfg, "_train")
     val_data = jrd.IntphysJsonTensor(cfg, "_val")
 
     #Test block using split of validation set b/c full training set takes too long
     # json_data = jrd.IntphysJsonTensor(cfg, "_val")
-    # train_size = 10 # round(len(json_data)*1)
+    # train_size = round(len(json_data)*1)
     # val_size = len(json_data) - train_size
     # For now use a manual seed for reproducibility
     # train_data, val_data = torch.utils.data.random_split(json_data, [train_size, val_size], generator = torch.Generator().manual_seed(42))
@@ -134,8 +134,8 @@ def train(cfg, args):
         # n_objs = n_objs[[0, 4, 5, 6, 8, 9]]
 
         attributes = dataset_utils.normalize_attr(attributes)
-        idx_tensor = torch.tensor([0, attributes.shape[0]//2, attributes.shape[0]//2, attributes.shape[0]])
-        out  = model([attributes[i][:n_objs[i]] for i in range(attributes.shape[0])], idx_tensor)
+        # idx_tensor = torch.tensor([0, attributes.shape[0]//2, attributes.shape[0]//2, attributes.shape[0]])
+        out  = model(attributes, n_objs)
         loss = criterion(out[1], depth.view(-1, 1, 288, 288))
         running_loss += loss.item()
 
@@ -157,10 +157,10 @@ def train(cfg, args):
                     # depth = depth[[0, 4, 5, 6, 8, 9], :, :]
                     # n_objs = n_objs[[0, 4, 5, 6, 8, 9]]
 
-                    idx_tensor = torch.tensor([0, attributes.shape[0]//2, attributes.shape[0]//2, attributes.shape[0]])
+                    # idx_tensor = torch.tensor([0, attributes.shape[0]//2, attributes.shape[0]//2, attributes.shape[0]])
 
                     attributes = dataset_utils.normalize_attr(attributes)
-                    out  = model([attributes[i][:n_objs[i]] for i in range(attributes.shape[0])], idx_tensor)
+                    out  = model(attributes, n_objs)
                     loss = criterion(out[1], depth.view(-1, 1, 288, 288))
 
                     v_loss += loss.item()
@@ -172,11 +172,11 @@ def train(cfg, args):
                 gt_depth = depth[rand_index].view(288,288).to("cpu")*10
                 out_depth = out[1][rand_index].view(288, 288).to("cpu")*10
 
-                wandb.log({"iteration" : i,
+                """wandb.log({"iteration" : i,
                     "training loss" : running_loss,
                     "validation_loss" : v_loss,
                     "examples" : [wandb.Image(gt_depth, caption="Ground Truth"),
-                                  wandb.Image(out_depth, caption="Predicted Depth")]})
+                                  wandb.Image(out_depth, caption="Predicted Depth")]})"""
 
                 print("\nIteration {0}/{1}\nRunning Loss: {2}\nValidation Loss: {3}\n{4} seconds".format(i, start_iter + args.iterations, running_loss, v_loss, time.time()-start))
 
@@ -190,12 +190,12 @@ def train(cfg, args):
                 running_loss=0
                 start = time.time()
 
-        if (i % args.checkpoint_interval) == 0 or i == (start_iter + args.iterations-1):
+        """if (i % args.checkpoint_interval) == 0 or i == (start_iter + args.iterations-1):
             d = {"model_state_dict": model.state_dict(),
                  "optimizer_state_dict": optimizer.state_dict(),
                  "iteration" : i}
             torch.save(d, os.path.join(wandb.run.dir, "checkpoint_iteration_{0}.tar".format(i)))
-            wandb.save("checkpoint_iteration_{0}.tar".format(i))
+            wandb.save("checkpoint_iteration_{0}.tar".format(i))"""
 
     return model
 
