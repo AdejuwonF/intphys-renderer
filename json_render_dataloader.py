@@ -46,11 +46,13 @@ class IntphysJsonTensor(Dataset):
         for i in range(len(self.dataset_dicts)):
             visibles = 0
             has_wall = False
+            has_occluder = False
             d = self.dataset_dicts[i]
             for annotation in d["annotations"]:
-                visibles += (annotation["attributes"]["visible"] * (annotation["attributes"]["type"] == 0 or annotation["attributes"]["type"] == 1))
+                visibles += (annotation["attributes"]["visible"] * (annotation["attributes"]["type"] == 0)) #or annotation["attributes"]["type"] == 1))
                 has_wall = has_wall or (annotation["attributes"]["visible"] and annotation["attributes"]["type"] == 3)
-            if (visibles == 0):# or has_wall):
+                has_occluder = has_occluder or (annotation["attributes"]["visible"] and annotation["attributes"]["type"] == 1)
+            if (visibles == 0) or has_wall or has_occluder:
                 non_visibles.append(i)
         # non_visibles.reverse()
         for idx in range(len(non_visibles)-1, -1, -1):
@@ -168,7 +170,7 @@ def main(args):
     cfg = setup_cfg(args, args.distributed)
     #print(cfg)
     dataset =  IntphysJsonTensor(cfg, "_val")
-    # omega_dataset = IntphysJsonTensor(cfg, "_train")
+    full_dataset = IntphysJsonTensor(cfg, "_train")
 
     """data = torch.zeros(288*288*10000)
     samples = torch.multinomial(torch.arange(len(omega_dataset), dtype=float), 10000)
